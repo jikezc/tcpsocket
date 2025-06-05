@@ -1,0 +1,44 @@
+syntax = "proto2";
+
+option go_package = "./;message";
+package pb;
+
+import "google/protobuf/any.proto";
+
+// 指令类型
+enum CommandType {
+  // 未知指令
+  CommandType_Unknow = 0;
+  // 握手
+  CommandType_HandShakeReq = 1;
+  // 握手回复
+  CommandType_HandShakeResp = 2;
+  // 心跳
+  CommandType_Heartbeat = 3;
+}
+
+// 通用消息体
+message MSG_BODY {
+  required CommandType command = 1;
+  required google.protobuf.Any payload = 2;
+  required int64 timestamp = 3;
+}
+
+// 握手消息
+message MSG_HANDSHAKE_REQ {
+  required string version = 1; // 协议版本号
+  required string deviceId = 2; // 设备ID（暂时用FQDN代替）
+}
+
+// 握手响应
+message MSG_HANDSHAKE_RESP {
+  required int32 code = 1;  // 响应码（0=成功）
+  required string message = 2; // 错误信息
+}
+
+// 心跳消息
+message MSG_HEARTBEAT {
+  required string os = 1;
+  required double cpu = 2; // cpu使用率(float64)
+  required double mem = 3; // 内存使用率(float64)
+}
