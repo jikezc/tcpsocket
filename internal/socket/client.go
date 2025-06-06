@@ -75,9 +75,10 @@ func (c *Client) Run() {
 	for {
 		// 反序列化消息
 		command, payload, err := serializer.DeserializeMessage(reader)
-		// 忽略EOF
 		if err == io.EOF {
-			continue
+			// TODO: 后续实现关系连接挥手消息，以及断线重连
+			fmt.Println("收到EOF，服务器关闭了连接，退出程序")
+			break
 		}
 		if err != nil {
 			fmt.Println("deserialize message error: ", err)
