@@ -106,15 +106,15 @@ func GetOS() string {
 
 // GetPerformance  获取性能信息
 func GetPerformance() (cpuPercent, menPercent float64) {
+	// 内存使用率
 	memInfo, _ := mem.VirtualMemory()
 	menPercent = memInfo.UsedPercent
-	fmt.Printf("内存使用率: %v\n", memInfo.UsedPercent)
 
+	// CPU使用率
 	cpuInfo, _ := cpu.Percent(1*time.Second, false)
 	if len(cpuInfo) > 0 {
 		cpuPercent = cpuInfo[0]
 	}
-	fmt.Printf("CPU使用率: %v\n", cpuPercent)
 
 	return cpuPercent, menPercent
 }

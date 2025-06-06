@@ -7,7 +7,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"io"
 	"tcpsocketv2/global"
-	"tcpsocketv2/intranal/protocol"
+	"tcpsocketv2/internal/protocol"
 	message "tcpsocketv2/pb"
 	"tcpsocketv2/pkg/utils"
 )

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 	"tcpsocketv2/global"
-	"tcpsocketv2/intranal/serializer"
+	"tcpsocketv2/internal/serializer"
 	message "tcpsocketv2/pb"
 	"tcpsocketv2/pkg/utils"
 	"time"
@@ -26,23 +26,23 @@ type Session struct {
 	ClientSpec    Spec   // 客户端硬件信息
 }
 
-// Handler 接口：处理消息
-type Handler interface {
-	HandlerHandshake(conn net.Conn, payload *message.MSG_HANDSHAKE_REQ) error
-	HandlerHeartbeat(conn net.Conn, payload *message.MSG_HEARTBEAT) error
+// ServMsgHandlerInterface 接口：处理消息
+type ServMsgHandlerInterface interface {
+	HandleHandshakeReq(conn net.Conn, payload *message.MSG_HANDSHAKE_REQ) error
+	HandleHeartbeatReq(conn net.Conn, payload *message.MSG_HEARTBEAT) error
 }
 
 // Server TCP 服务器
 type Server struct {
-	Address    string               // 监听地址
-	Port       int                  // 监听端口
-	SessionMap map[net.Conn]Session // 会话连接池
-	Handler    Handler              // 消息处理器
+	Address    string                  // 监听地址
+	Port       int                     // 监听端口
+	SessionMap map[net.Conn]Session    // 会话连接池
+	Handler    ServMsgHandlerInterface // 消息处理器
 }
 
 // NewServer 创建并返回一个Server实例，并初始化SessionMap
-func NewServer(address string, port int) Server {
-	return Server{
+func NewServer(address string, port int) *Server {
+	return &Server{
 		Address:    address,
 		Port:       port,
 		SessionMap: make(map[net.Conn]Session), // 使用make函数初始化map
@@ -51,7 +51,7 @@ func NewServer(address string, port int) Server {
 }
 
 // RegisterHandler 注册消息处理器
-func (s *Server) RegisterHandler(handler Handler) {
+func (s *Server) RegisterHandler(handler ServMsgHandlerInterface) {
 	s.Handler = handler
 }
 
@@ -116,7 +116,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			fmt.Printf("Client: %s, DeserializeMessage Error: %v\n", clientIP, err)
 			break
 		}
-		fmt.Printf("Client: %s, Receive Message: %v\n", clientIP, payload)
+		fmt.Printf("Server Receive Message: %v, Client: %s\n", payload, clientIP)
 
 		// 处理消息
 		handlerErr := s.handleMessage(conn, command, payload)
@@ -131,9 +131,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 func (s *Server) handleMessage(conn net.Conn, command message.CommandType, payload interface{}) (err error) {
 	switch command {
 	case message.CommandType_CommandType_HandShakeReq:
-		err = s.Handler.HandlerHandshake(conn, payload.(*message.MSG_HANDSHAKE_REQ))
+		err = s.Handler.HandleHandshakeReq(conn, payload.(*message.MSG_HANDSHAKE_REQ))
 	case message.CommandType_CommandType_Heartbeat:
-		err = s.Handler.HandlerHeartbeat(conn, payload.(*message.MSG_HEARTBEAT))
+		err = s.Handler.HandleHeartbeatReq(conn, payload.(*message.MSG_HEARTBEAT))
 	default:
 		fmt.Printf("收到未知指令: %v\n", command)
 	}
@@ -150,11 +150,6 @@ func (s *Server) StartHeartbeatChecker(conn net.Conn) {
 	checkHeartbeat(s, conn)
 	// 可以在这里记录日志或添加清理逻辑
 	fmt.Printf("Heartbeat checker started for client: %v\n", conn.RemoteAddr())
-	//defer func() {
-	//	// 停止心跳检查
-	//	stopC <- true
-	//	fmt.Printf("Heartbeat checker stopped for client: %v\n", conn.RemoteAddr())
-	//}()
 }
 
 // checkHeartbeat 检测心跳

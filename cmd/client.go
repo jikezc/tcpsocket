@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"tcpsocketv2/intranal/socket"
+	"tcpsocketv2/internal/handler"
+	"tcpsocketv2/internal/socket"
 )
 
 func main() {
@@ -11,5 +12,6 @@ func main() {
 		fmt.Printf("Connect error: %v", err)
 		return
 	}
+	client.RegisterHandler(handler.NewClientMsgHandler(client))
 	client.Run()
 }
