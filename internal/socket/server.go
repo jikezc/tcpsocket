@@ -2,9 +2,11 @@ package socket
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
+	"tcpsocketv2/common/logger"
 	"tcpsocketv2/global"
 	"tcpsocketv2/internal/serializer"
 	message "tcpsocketv2/pb"
@@ -21,14 +23,15 @@ type Spec struct {
 
 // Session 会话信息
 type Session struct {
-	DiverId       string // 设备ID
-	LastAliveTime int64  //  最后活跃时间
-	ClientSpec    Spec   // 客户端硬件信息
+	DiverId       string          // 设备ID
+	LastAliveTime int64           //  最后活跃时间
+	ClientSpec    Spec            // 客户端硬件信息
+	Ctx           context.Context // 会话上下文
 }
 
 // ServMsgHandlerInterface 接口：处理消息
 type ServMsgHandlerInterface interface {
-	HandleHandshakeReq(conn net.Conn, payload *message.MSG_HANDSHAKE_REQ) error
+	HandleHandshakeReq(conn net.Conn, payload *message.MSG_HANDSHAKE_REQ, ctx context.Context) error
 	HandleHeartbeatReq(conn net.Conn, payload *message.MSG_HEARTBEAT) error
 }
 
@@ -68,95 +71,107 @@ func (s *Server) UpdateSession(conn net.Conn, _session Session) {
 
 // ListenAndServe 启动TCP服务器并开始监听
 func (s *Server) ListenAndServe() error {
+	l := logger.Get()
 	server := fmt.Sprintf("%s:%d", s.Address, s.Port)
 	listener, err := net.Listen("tcp", server)
 	if err != nil {
 		return fmt.Errorf("Start TCP Server on %v Failed\nerr: %v", server, err)
 	}
-	fmt.Printf("Server Listening: %v\n", server)
+	l.Info(fmt.Sprintf("Server Listening: %v", server))
 	defer func() {
 		err := listener.Close()
 		if err != nil {
-			fmt.Printf("Listen Close Error: %v\n", err)
+			l.Error(fmt.Sprintf("Listen Close Error: %v\n", err))
 		}
 	}()
 
 	for {
 		conn, acceptErr := listener.Accept()
 		if acceptErr != nil {
-			fmt.Printf("Accept Error: %v\n", acceptErr)
+			l.Error(fmt.Sprintf("Accept Error: %v", acceptErr))
 			continue
 		}
-		fmt.Printf("Accept Client Conn: %v\n", conn.RemoteAddr())
+		l.Info(fmt.Sprintf("Accept Client Conn: %v", conn.RemoteAddr()))
+
 		// 启动一个goroutine处理连接
 		go s.handleConnection(conn)
+
 	}
 }
 
 // handleConnection 处理客户端连接
 func (s *Server) handleConnection(conn net.Conn) {
+	// 初始化上下文，用于传递必要参数
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// 获取日志实例, 并将上下文传递给日志实例
+	l := logger.Get()
+	ctx = logger.WithCtx(ctx, l)
+
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			fmt.Printf("Conn Close Error: %v\n", err)
+			l.Error(fmt.Sprintf("Close Client Conn Error: %v\n", err))
 		}
 	}()
 	reader := bufio.NewReader(conn)
-
+	clientIp := conn.RemoteAddr().String()
 	for {
-		clientIP := conn.RemoteAddr()
 		// 反序列化消息
-		command, payload, err := serializer.DeserializeMessage(reader)
+		command, payload, err := serializer.DeserializeMessage(reader, ctx)
 		// 消息结束符则不再继续
 		if err == io.EOF {
 			break
 		}
 		// 反序列化失败
 		if err != nil {
-			fmt.Printf("Client: %s, DeserializeMessage Error: %v\n", clientIP, err)
+			l.Error(fmt.Sprintf("Server DeserializeMessage Error: %v, Client: %s", err, clientIp))
 			break
 		}
-		fmt.Printf("Server Receive Message: %v, Client: %s\n", payload, clientIP)
-
+		l.Info(fmt.Sprintf("Server Receive Message: %v, Client: %s", payload, clientIp))
 		// 处理消息
-		handlerErr := s.handleMessage(conn, command, payload)
+		handlerErr := s.handleMessage(command, payload, conn, ctx)
 		if handlerErr != nil {
-			fmt.Printf("Client: %s, HandleMessage Error: %v\n", clientIP, err)
+			l.Error(fmt.Sprintf("Server HandleMessage Error: %v, Client: %s", err, clientIp))
 			break
 		}
 	}
 }
 
 // handleMessage 处理接收到的消息，根据命令类型调用对应的处理器函数
-func (s *Server) handleMessage(conn net.Conn, command message.CommandType, payload interface{}) (err error) {
+func (s *Server) handleMessage(command message.CommandType, payload interface{}, conn net.Conn, ctx context.Context) (err error) {
+	l := logger.FromCtx(ctx)
 	switch command {
 	case message.CommandType_CommandType_HandShakeReq:
-		err = s.Handler.HandleHandshakeReq(conn, payload.(*message.MSG_HANDSHAKE_REQ))
+		err = s.Handler.HandleHandshakeReq(conn, payload.(*message.MSG_HANDSHAKE_REQ), ctx)
 	case message.CommandType_CommandType_Heartbeat:
 		err = s.Handler.HandleHeartbeatReq(conn, payload.(*message.MSG_HEARTBEAT))
 	default:
-		fmt.Printf("收到未知指令: %v\n", command)
+		l.Warn(fmt.Sprintf("收到未知指令: %v\n", command))
 	}
 
 	if err != nil {
-		fmt.Printf("Server, 处理消息异常: %v\n", err)
+		l.Error(fmt.Sprintf("Server, 处理消息异常: %v\n", err))
 	}
 	return err
 }
 
 // StartHeartbeatChecker 启动心跳检查协程
 func (s *Server) StartHeartbeatChecker(conn net.Conn) {
+	ctx := s.SessionMap[conn].Ctx
+	l := logger.FromCtx(ctx)
 	// 获取停止通道用于管理心跳协程生命周期
 	checkHeartbeat(s, conn)
 	// 可以在这里记录日志或添加清理逻辑
-	fmt.Printf("Heartbeat checker started for client: %v\n", conn.RemoteAddr())
+	l.Debug(fmt.Sprintf("Heartbeat checker started for client: %v", conn.RemoteAddr()))
 }
 
 // checkHeartbeat 检测心跳
 func checkHeartbeat(s *Server, conn net.Conn) (stopC chan bool) {
+	ctx := s.SessionMap[conn].Ctx
+	l := logger.FromCtx(ctx)
 	ticker := time.NewTicker(global.HeartbeatCheckTime * time.Second)
 	stopC = make(chan bool)
-
 	go func() {
 		defer ticker.Stop()
 		for {
@@ -164,25 +179,25 @@ func checkHeartbeat(s *Server, conn net.Conn) (stopC chan bool) {
 			case <-ticker.C:
 				_session, ok := s.SessionMap[conn]
 				if !ok {
-					fmt.Println("客户端会话不存在，停止心跳检测")
+					l.Error("客户端会话不存在，停止心跳检测")
 					return
 				}
 				// 检查心跳超时
 				current := utils.GetCurrentTimestamp()
 				interval := current - _session.LastAliveTime
 				if interval > global.HeartbeatTimeout {
-					fmt.Printf("客户端: %v, 心跳超时，关闭连接\n", conn.RemoteAddr())
+					l.Error(fmt.Sprintf("客户端: %v, 心跳超时，关闭连接", conn.RemoteAddr()))
 					delete(s.SessionMap, conn)
 					err := conn.Close()
 					if err != nil {
-						fmt.Printf("Server, 关闭连接异常: %v\n", err)
+						l.Error(fmt.Sprintf("Server, 关闭连接异常: %v\n", err))
 					}
 					return
 				} else {
-					fmt.Printf("客户端: %v, 心跳正常\n", conn.RemoteAddr())
+					l.Debug(fmt.Sprintf("客户端: %v, 心跳正常", conn.RemoteAddr()))
 				}
 			case <-stopC:
-				fmt.Println("停止心跳检查")
+				l.Warn("停止心跳检查")
 				return
 			}
 		}

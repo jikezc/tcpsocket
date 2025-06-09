@@ -2,10 +2,12 @@ package serializer
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"io"
+	"tcpsocketv2/common/logger"
 	"tcpsocketv2/global"
 	"tcpsocketv2/internal/protocol"
 	message "tcpsocketv2/pb"
@@ -39,11 +41,12 @@ func SerializeMessage(command message.CommandType, payload proto.Message) ([]byt
 }
 
 // DeserializeMessage 反序列化消息
-func DeserializeMessage(reader *bufio.Reader) (message.CommandType, proto.Message, error) {
+func DeserializeMessage(reader *bufio.Reader, ctx context.Context) (message.CommandType, proto.Message, error) {
+	l := logger.FromCtx(ctx)
 	// 先进行协议解码
 	decodedData, err := protocol.Decode(reader)
 	if err == io.EOF {
-		fmt.Printf("Receive Over!\n")
+		l.Warn("收到EOF消息，准备结束会话")
 		return 0, nil, err
 	}
 	if err != nil {
@@ -69,19 +72,19 @@ func DeserializeMessage(reader *bufio.Reader) (message.CommandType, proto.Messag
 
 	// 根据不同的消息类型创建对应的 payload 结构
 	var payloadMsg proto.Message
-	fmt.Printf("收到指令类型为： %v\n", command)
+	l.Debug(fmt.Sprintf("收到指令类型为： %v", command))
 	switch command {
 	case message.CommandType_CommandType_HandShakeReq:
-		fmt.Println("收到指令：握手请求消息")
+		l.Debug("收到指令：握手请求消息")
 		payloadMsg = &message.MSG_HANDSHAKE_REQ{}
 	case message.CommandType_CommandType_HandShakeResp:
-		fmt.Println("收到指令：握手响应消息")
+		l.Debug("收到指令：握手响应消息")
 		payloadMsg = &message.MSG_HANDSHAKE_RESP{}
 	case message.CommandType_CommandType_Heartbeat:
-		fmt.Println("收到指令：心跳消息")
+		l.Debug("收到指令：心跳消息")
 		payloadMsg = &message.MSG_HEARTBEAT{}
 	case message.CommandType_CommandType_Unknow:
-		fmt.Println("收到指令：未知消息")
+		l.Warn("收到指令：未知消息")
 	// 添加更多 case 处理其他命令类型
 	default:
 		return command, nil, fmt.Errorf("unsupported handler type: %v", command)

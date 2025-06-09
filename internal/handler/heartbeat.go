@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net"
+	"tcpsocketv2/common/logger"
 	"tcpsocketv2/internal/serializer"
 	"tcpsocketv2/internal/socket"
 	message "tcpsocketv2/pb"
@@ -11,6 +12,7 @@ import (
 
 // HeartbeatReq 发送心跳包
 func (h *ClientMsgHandler) HeartbeatReq() error {
+	l := logger.FromCtx(h.Client.Ctx)
 	os := utils.GetOS()
 	cpu, men := utils.GetPerformance()
 	// 创建心跳包
@@ -32,7 +34,7 @@ func (h *ClientMsgHandler) HeartbeatReq() error {
 	if err != nil {
 		return fmt.Errorf("发送心跳包异常: %v\n", err)
 	}
-	fmt.Printf("发送心跳包成功，发送了%v字节数据\n", n)
+	l.Debug(fmt.Sprintf("发送心跳包成功，发送了%v字节数据", n))
 	return nil
 }
 
@@ -50,7 +52,6 @@ func (h *ServerMsgHandler) HandleHeartbeatReq(conn net.Conn, payload *message.MS
 		Mem: *payload.Mem,
 	}
 	_session.LastAliveTime = utils.GetCurrentTimestamp()
-
 	// 更新会话
 	h.Server.UpdateSession(conn, _session)
 
