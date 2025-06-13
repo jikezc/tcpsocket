@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"io"
 	"tcpsocketv2/common/logger"
-	"tcpsocketv2/global"
+	"tcpsocketv2/config"
 	"tcpsocketv2/internal/protocol"
 	message "tcpsocketv2/pb"
 	"tcpsocketv2/pkg/utils"
@@ -42,6 +42,7 @@ func SerializeMessage(command message.CommandType, payload proto.Message) ([]byt
 
 // DeserializeMessage 反序列化消息
 func DeserializeMessage(reader *bufio.Reader, ctx context.Context) (message.CommandType, proto.Message, error) {
+	cfg := config.Get()
 	l := logger.FromCtx(ctx)
 	// 先进行协议解码
 	decodedData, err := protocol.Decode(reader)
@@ -59,7 +60,7 @@ func DeserializeMessage(reader *bufio.Reader, ctx context.Context) (message.Comm
 		return 0, nil, fmt.Errorf("failed to unmarshal message body: %v", err)
 	}
 	timestamp := msgBody.GetTimestamp()
-	expireTime := utils.GetCurrentTimestamp() - global.MsgExpireTime
+	expireTime := utils.GetCurrentTimestamp() - cfg.Msg.MsgExpireTime
 	// 判断消息是否过期
 	if timestamp < expireTime {
 		return 0, nil, fmt.Errorf("消息非法，超过过期时间，当前时间%v, 消息时间: %v\n", utils.GetCurrentTimestamp(), timestamp)

@@ -8,7 +8,7 @@ import (
 	"net"
 	"tcpsocketv2/common/enums"
 	"tcpsocketv2/common/logger"
-	"tcpsocketv2/global"
+	"tcpsocketv2/config"
 	"tcpsocketv2/internal/serializer"
 	message "tcpsocketv2/pb"
 	"time"
@@ -123,9 +123,10 @@ func (c *Client) handleMessage(command message.CommandType, payload interface{})
 
 // StartHeartbeat 启动心跳
 func (c *Client) StartHeartbeat() (err error) {
+	cfg := config.Get()
 	// 启动心跳协程
 	go func() {
-		ticker := time.NewTicker(time.Second * global.HeartbeatInterval)
+		ticker := time.NewTicker(time.Second * cfg.Msg.HeartbeatInterval)
 		// 创建心跳定时器
 		defer ticker.Stop()
 		for {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"net"
 	"tcpsocketv2/common/logger"
-	"tcpsocketv2/global"
+	"tcpsocketv2/config"
 	"tcpsocketv2/internal/serializer"
 	message "tcpsocketv2/pb"
 	"tcpsocketv2/pkg/utils"
@@ -77,7 +77,7 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return fmt.Errorf("Start TCP Server on %v Failed\nerr: %v", server, err)
 	}
-	l.Info(fmt.Sprintf("Server Listening: %v", server))
+	l.Info(fmt.Sprintf("Server Listening: %s ", server))
 	defer func() {
 		err := listener.Close()
 		if err != nil {
@@ -168,9 +168,10 @@ func (s *Server) StartHeartbeatChecker(conn net.Conn) {
 
 // checkHeartbeat 检测心跳
 func checkHeartbeat(s *Server, conn net.Conn) (stopC chan bool) {
+	cfg := config.Get()
 	ctx := s.SessionMap[conn].Ctx
 	l := logger.FromCtx(ctx)
-	ticker := time.NewTicker(global.HeartbeatCheckTime * time.Second)
+	ticker := time.NewTicker(cfg.Msg.HeartbeatCheckTime * time.Second)
 	stopC = make(chan bool)
 	go func() {
 		defer ticker.Stop()
@@ -185,7 +186,7 @@ func checkHeartbeat(s *Server, conn net.Conn) (stopC chan bool) {
 				// 检查心跳超时
 				current := utils.GetCurrentTimestamp()
 				interval := current - _session.LastAliveTime
-				if interval > global.HeartbeatTimeout {
+				if interval > cfg.Msg.HeartbeatTimeout {
 					l.Error(fmt.Sprintf("客户端: %v, 心跳超时，关闭连接", conn.RemoteAddr()))
 					delete(s.SessionMap, conn)
 					err := conn.Close()
